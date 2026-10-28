@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>PYRAMID — The Classified</title>
 
   <style>
@@ -23,7 +22,7 @@
     header {
       padding: 22px;
       border-bottom: 1px solid #dedfe3;
-      background: #ffffff;
+      background: #fff;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -80,7 +79,7 @@
     }
 
     .panel {
-      background: #ffffff;
+      background: #fff;
       border: 1px solid #dfe1e6;
       padding: 25px;
       border-radius: 5px;
@@ -130,8 +129,9 @@
       border-radius: 3px;
     }
 
-    button:active {
-      background: #505661;
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
     }
 
     #message {
@@ -140,6 +140,7 @@
       font-size: 12px;
       line-height: 1.7;
       color: #505661;
+      overflow-wrap: anywhere;
     }
 
     .notice {
@@ -181,13 +182,11 @@
 </head>
 
 <body>
-
   <header>
     <div>
       <div class="brand">PYRAMID.</div>
       <div class="edition">THE CLASSIFIED</div>
     </div>
-
     <div class="status">● SYSTEM ONLINE</div>
   </header>
 
@@ -220,27 +219,30 @@
 
       <form id="loginForm">
         <label for="studentId">STUDENT ID</label>
-
         <input
           id="studentId"
           type="text"
           placeholder="Enter your student ID"
+          autocomplete="username"
+          autocapitalize="characters"
           required
         >
 
         <label for="password">ACCESS CODE</label>
-
         <input
           id="password"
           type="password"
           placeholder="Enter your access code"
+          autocomplete="current-password"
           required
         >
 
-        <button type="submit">ENTER THE PYRAMID ↗</button>
+        <button id="loginButton" type="submit">
+          ENTER THE PYRAMID ↗
+        </button>
       </form>
 
-      <p id="message" role="status"></p>
+      <p id="message" role="status" aria-live="polite"></p>
     </section>
 
     <p class="notice">
@@ -249,24 +251,109 @@
     </p>
   </main>
 
-  <footer>
-    PYRAMID: THE CLASSIFIED © 2026
-  </footer>
+  <footer>PYRAMID: THE CLASSIFIED © 2026</footer>
 
-  <script>
-    document.getElementById("loginForm")
-      .addEventListener("submit", function(event) {
-        event.preventDefault();
+  <script type="module">
+    import { createClient } from
+      "https://esm.sh/@supabase/supabase-js@2";
 
-        const message = document.getElementById("message");
+    const SUPABASE_URL =
+      "https://pqecrddeucxxhtxwcdxn.supabase.co";
 
-        message.style.display = "block";
-        message.textContent =
-          "ACCESS PORTAL UNDER DEVELOPMENT. " +
-          "Student accounts will be activated soon.";
+    const SUPABASE_PUBLISHABLE_KEY =
+      "sb_publishable_szDqnBRzATIBRmKs_owXiA_NpXXJ5NP";
 
-      });
+    const supabase = createClient(
+      SUPABASE_URL,
+      SUPABASE_PUBLISHABLE_KEY
+    );
+
+    const form = document.getElementById("loginForm");
+    const studentInput = document.getElementById("studentId");
+    const passwordInput = document.getElementById("password");
+    const message = document.getElementById("message");
+    const button = document.getElementById("loginButton");
+
+    function showMessage(text) {
+      message.style.display = "block";
+      message.textContent = text;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const studentId = studentInput.value.trim().toUpperCase();
+      const accessCode = passwordInput.value;
+
+      if (!/^PYR(00[1-9]|01\d|02[0-5])$/.test(studentId)) {
+        showMessage("Student ID tidak valid. Periksa kembali ID kamu.");
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "VERIFYING ACCESS...";
+      showMessage("Memverifikasi akses siswa...");
+
+      try {
+        const response = await fetch(
+          `${SUPABASE_URL}/functions/v1/student-login`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": SUPABASE_PUBLISHABLE_KEY
+            },
+            body: JSON.stringify({
+              student_id: studentId,
+              access_code: accessCode
+            })
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result.error || "Login gagal. Silakan coba lagi."
+          );
+        }
+
+        if (!result.session?.access_token ||
+            !result.session?.refresh_token) {
+          throw new Error(
+            "Sesi login tidak diterima. Hubungi administrator."
+          );
+        }
+
+        const { error: sessionError } =
+          await supabase.auth.setSession({
+            access_token: result.session.access_token,
+            refresh_token: result.session.refresh_token
+          });
+
+        if (sessionError) {
+          throw new Error(
+            "Sesi gagal disimpan. Silakan coba kembali."
+          );
+        }
+
+        showMessage(
+          `ACCESS GRANTED — ${result.user.student_id}. ` +
+          "Login berhasil, tetapi halaman portal siswa belum disiapkan."
+        );
+
+        button.textContent = "ACCESS GRANTED";
+      } catch (error) {
+        showMessage(
+          error instanceof Error
+            ? error.message
+            : "Terjadi kesalahan. Silakan coba lagi."
+        );
+
+        button.disabled = false;
+        button.textContent = "ENTER THE PYRAMID ↗";
+      }
+    });
   </script>
-
 </body>
 </html>
